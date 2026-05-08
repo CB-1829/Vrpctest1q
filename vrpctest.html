@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PC-VR WebXR Interaction</title>
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #0f172a; font-family: 'Inter', sans-serif; }
+        .hud-container {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 9999; display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+        }
+        .glass {
+            background: rgba(15, 23, 42, 0.9);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            pointer-events: auto;
+        }
+        .pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+    </style>
+</head>
+<body>
+
+    <div id="ui-overlay" class="hud-container">
+        <div class="glass p-8 rounded-3xl shadow-2xl max-w-lg w-full mx-4 text-white">
+            <div class="flex justify-between items-center mb-6">
+                <h1 class="text-2xl font-bold tracking-tight">PC-VR Connector</h1>
+                <div id="connection-badge" class="px-3 py-1 rounded-full bg-red-500/20 text-red-400 text-xs font-bold uppercase tracking-widest">Disconnected</div>
+            </div>
+
+            <div class="space-y-4 mb-8">
+                <div class="flex items-center justify-between p-3 bg-white/5 rounded-xl">
+                    <span class="text-slate-400">OpenXR Runtime</span>
+                    <span id="runtime-status" class="text-yellow-400">Scanning...</span>
+                </div>
+                <div class="flex items-center justify-between p-3 bg-white/5 rounded-xl">
+                    <span class="text-slate-400">Secure Protocol</span>
+                    <span id="https-status" class="text-yellow-400">Checking...</span>
+                </div>
+            </div>
+
+            <div id="pc-instructions" class="hidden mb-6 text-sm text-slate-300 leading-relaxed border-l-4 border-indigo-500 pl-4 py-2">
+                <p class="font-bold text-indigo-400 mb-1">PC-VR detected! Instructions:</p>
+                1. Ensure your headset is active in Windows.<br>
+                2. Click the <strong class="text-white">VR Button</strong> in the bottom right corner.<br>
+                3. Accept the browser prompt to "Allow VR access".
+            </div>
+
+            <div id="error-box" class="hidden mb-6 p-4 bg-red-900/40 border border-red-500/50 rounded-xl text-red-200 text-sm"></div>
+
+            <button id="start-btn" onclick="hideUI()" class="w-full py-4 bg-indigo-600 hover:bg-indigo-500 rounded-2xl font-bold transition-all shadow-lg shadow-indigo-500/20">
+                Enter Scene
+            </button>
+        </div>
+    </div>
+
+    <a-scene xr-mode-ui="enabled: true" device-orientation-permission-ui="enabled: false">
+        <a-assets>
+            <a-mixin id="box" geometry="primitive: box; width: 0.5; height: 0.5; depth: 0.5" material="color: #6366f1"></a-mixin>
+            <a-mixin id="interact" animation__scale="property: scale; to: 1.1 1.1 1.1; dur: 200; startEvents: mouseenter"
+                                  animation__scale_back="property: scale; to: 1 1 1; dur: 200; startEvents: mouseleave"></a-mixin>
+        </a-assets>
+
+        <!-- Environment -->
+        <a-sky color="#020617"></a-sky>
+        <a-grid-floor color="#1e293b"></a-grid-floor>
+        <a-light type="ambient" intensity="0.6"></a-light>
+        <a-light type="directional" position="-1 4 3" intensity="0.8"></a-light>
+
+        <!-- Interactive Blocks -->
+        <a-entity class="clickable" mixin="box interact" position="-1 1.5 -3" click-handler="label: Cube A"></a-entity>
+        <a-entity class="clickable" mixin="box interact" position="0 1.5 -3" material="color: #ec4899" click-handler="label: Cube B"></a-entity>
+        <a-entity class="clickable" mixin="box interact" position="1 1.5 -3" material="color: #10b981" click-handler="label: Cube C"></a-entity>
+
+        <!-- Text Feedback in VR -->
+        <a-text id="vr-console" value="Point and click a cube" position="0 2.5 -3" align="center" width="4" color="#94a3b8"></a-text>
+
+        <a-entity id="rig">
+            <a-camera position="0 1.6 0">
+                <a-cursor color="#fff" scale="0.5 0.5 0.5" raycaster="objects: .clickable"></a-cursor>
+            </a-camera>
+            
+            <!-- PC-VR Specific Controllers -->
+            <a-entity laser-controls="hand: left" raycaster="objects: .clickable; far: 20; showLine: true"></a-entity>
+            <a-entity laser-controls="hand: right" raycaster="objects: .clickable; far: 20; showLine: true"></a-entity>
+        </a-entity>
+    </a-scene>
+
+    <script>
+        AFRAME.registerComponent('click-handler', {
+            schema: { label: {type: 'string'} },
+            init: function () {
+                this.el.addEventListener('click', () => {
+                    const console = document.querySelector('#vr-console');
+                    const colors = ['#f87171', '#fbbf24', '#34d399', '#60a5fa', '#818cf8', '#a78bfa'];
+                    const randomColor = colors[Math.floor(Math.random() * colors.length)];
+                    
+                    this.el.setAttribute('material', 'color', randomColor);
+                    console.setAttribute('value', 'Interacted with: ' + this.data.label);
+                    console.setAttribute('color', randomColor);
+                });
+            }
+        });
+
+        window.addEventListener('load', async () => {
+            const httpsStatus = document.getElementById('https-status');
+            const runtimeStatus = document.getElementById('runtime-status');
+            const badge = document.getElementById('connection-badge');
+            const errorBox = document.getElementById('error-box');
+            const pcInfo = document.getElementById('pc-instructions');
+
+            // Check HTTPS (Crucial for PC Browsers)
+            const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost';
+            httpsStatus.innerText = isSecure ? "Secure" : "Insecure (Action Required)";
+            httpsStatus.className = isSecure ? "text-green-400" : "text-red-400";
+
+            if (!isSecure) {
+                errorBox.classList.remove('hidden');
+                errorBox.innerHTML = "<strong>CRITICAL:</strong> PC browsers block WebXR on non-HTTPS links. <br>Use <strong>localhost</strong> or <strong>GitHub Pages</strong>.";
+            }
+
+            // Check WebXR Runtime
+            if ('xr' in navigator) {
+                try {
+                    const supported = await navigator.xr.isSessionSupported('immersive-vr');
+                    if (supported) {
+                        runtimeStatus.innerText = "Ready for VR";
+                        runtimeStatus.className = "text-green-400";
+                        badge.innerText = "VR Ready";
+                        badge.className = "px-3 py-1 rounded-full bg-green-500/20 text-green-400 text-xs font-bold uppercase tracking-widest";
+                        pcInfo.classList.remove('hidden');
+                    } else {
+                        runtimeStatus.innerText = "No Headset Found";
+                        runtimeStatus.className = "text-red-400";
+                    }
+                } catch (e) {
+                    runtimeStatus.innerText = "API Error";
+                }
+            } else {
+                runtimeStatus.innerText = "Browser Not Supported";
+                runtimeStatus.className = "text-red-400";
+            }
+        });
+
+        function hideUI() {
+            document.getElementById('ui-overlay').style.display = 'none';
+        }
+
+        // Auto-hide UI when entering VR mode
+        document.querySelector('a-scene').addEventListener('enter-vr', hideUI);
+    </script>
+</body>
+</html>
