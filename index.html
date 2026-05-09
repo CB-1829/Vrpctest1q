@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>VR Physics Playground</title>
     <!-- Main A-Frame Library -->
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
@@ -11,16 +12,51 @@
     <script src="https://unpkg.com/aframe-super-hands-component@^3.0.2/dist/aframe-super-hands.min.js"></script>
     <!-- Teleportation component -->
     <script src="https://cdn.jsdelivr.net/rawgit/fernandojsg/aframe-teleport-controls/master/dist/aframe-teleport-controls.min.js"></script>
+    <!-- Tailwind for the Start Button UI -->
+    <script src="https://cdn.tailwindcss.com"></script>
 
     <style>
+        body { margin: 0; overflow: hidden; font-family: 'Inter', sans-serif; }
+        
+        #start-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 9999;
+            background: radial-gradient(circle at center, #111827 0%, #000000 100%);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transition: opacity 0.5s ease;
+        }
+
+        .glass-button {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            transition: all 0.3s ease;
+        }
+
+        .glass-button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(99, 102, 241, 0.5);
+        }
+
         #instructions {
             position: absolute; top: 10px; left: 10px; z-index: 100;
             background: rgba(0,0,0,0.7); color: white; padding: 15px;
             font-family: sans-serif; border-radius: 10px; pointer-events: none;
+            display: none; /* Hidden until VR starts */
         }
     </style>
 </head>
 <body>
+
+    <div id="start-overlay">
+        <h1 class="text-4xl font-black text-white mb-8 tracking-tighter uppercase">Physics Playground</h1>
+        <button id="start-btn" class="glass-button px-12 py-6 rounded-full text-white text-2xl font-bold uppercase tracking-widest cursor-pointer">
+            Enter VR
+        </button>
+        <p class="text-slate-400 mt-6 text-sm">Headset & Controllers Recommended</p>
+    </div>
 
     <!-- HUD Instructions for desktop view -->
     <div id="instructions">
@@ -30,7 +66,7 @@
         3. Toss objects to test gravity!
     </div>
 
-    <a-scene physics="debug: false; gravity: -9.8">
+    <a-scene physics="debug: false; gravity: -9.8" xr-mode-ui="enabled: false">
         
         <a-assets>
             <a-mixin id="cube" geometry="primitive: box; width: 0.3; height: 0.3; depth: 0.3"
@@ -44,35 +80,34 @@
             </a-mixin>
         </a-assets>
 
-        <a-sky color="#111827"></a-sky>
-        <a-light type="ambient" intensity="0.5"></a-light>
+        <a-sky color="#0f172a"></a-sky>
+        <a-light type="ambient" intensity="0.4"></a-light>
         <a-light type="directional" position="1 4 3" intensity="0.8" castShadow="true"></a-light>
 
-        <!-- The Floor (Static body means it doesn't fall) -->
-        <a-plane static-body rotation="-90 0 0" width="20" height="20" color="#1f2937" shadow></a-plane>
+        <!-- The Floor -->
+        <a-plane static-body rotation="-90 0 0" width="30" height="30" color="#1e293b" shadow></a-plane>
 
-        <!-- A "Table" or pedestal to hold objects -->
-        <a-box static-body position="0 0.5 -1.5" width="2" height="1" depth="1" color="#374151" shadow></a-box>
+        <!-- A "Table" or pedestal -->
+        <a-box static-body position="0 0.5 -1.5" width="2" height="1" depth="1" color="#334155" shadow></a-box>
 
         <!-- Grabbable Cubes -->
-        <a-entity mixin="cube" position="-0.5 1.2 -1.5" material="color: #ef4444"></a-entity>
+        <a-entity mixin="cube" position="-0.5 1.2 -1.5" material="color: #6366f1"></a-entity>
         <a-entity mixin="cube" position="0 1.2 -1.5" material="color: #10b981"></a-entity>
-        <a-entity mixin="cube" position="0.5 1.2 -1.5" material="color: #3b82f6"></a-entity>
+        <a-entity mixin="cube" position="0.5 1.2 -1.5" material="color: #f43f5e"></a-entity>
         <a-entity mixin="cube" position="0 1.8 -1.5" material="color: #f59e0b"></a-entity>
 
         <a-entity id="rig">
             <a-camera position="0 1.6 0">
-                <a-cursor color="white" raycaster="objects: [grabbable]"></a-cursor>
+                <a-cursor color="white" raycaster="objects: [grabbable]" opacity="0.5"></a-cursor>
             </a-camera>
             
-            <!-- Left Hand: Teleport + Grab -->
+            <!-- Hands -->
             <a-entity id="leftHand" mixin="controller-style"
                       hand-controls="hand: left"
                       teleport-controls="cameraRig: #rig; teleportOrigin: a-camera; button: trigger;"
                       sphere-collider="objects: [grabbable]">
             </a-entity>
 
-            <!-- Right Hand: Grab + Physics Interaction -->
             <a-entity id="rightHand" mixin="controller-style"
                       hand-controls="hand: right"
                       sphere-collider="objects: [grabbable]">
@@ -82,14 +117,38 @@
     </a-scene>
 
     <script>
-        // Optional: Make objects change color slightly when touched
+        const startBtn = document.getElementById('start-btn');
+        const overlay = document.getElementById('start-overlay');
+        const scene = document.querySelector('a-scene');
+        const instructions = document.getElementById('instructions');
+
+        startBtn.addEventListener('click', () => {
+            // 1. Enter Fullscreen (for desktop/mobile browser)
+            if (document.documentElement.requestFullscreen) {
+                document.documentElement.requestFullscreen();
+            }
+
+            // 2. Hide Overlay
+            overlay.style.opacity = '0';
+            setTimeout(() => {
+                overlay.style.display = 'none';
+                instructions.style.display = 'block';
+            }, 500);
+
+            // 3. Enter VR Mode in the headset
+            if (scene.enterVR) {
+                scene.enterVR();
+            }
+        });
+
+        // Effect for cubes
         const cubes = document.querySelectorAll('[grabbable]');
         cubes.forEach(cube => {
-            cube.addEventListener('hover-start', function (evt) {
-                this.setAttribute('opacity', '0.7');
+            cube.addEventListener('hover-start', function () {
+                this.setAttribute('material', 'emissive', '#222');
             });
-            cube.addEventListener('hover-end', function (evt) {
-                this.setAttribute('opacity', '1.0');
+            cube.addEventListener('hover-end', function () {
+                this.setAttribute('material', 'emissive', '#000');
             });
         });
     </script>
